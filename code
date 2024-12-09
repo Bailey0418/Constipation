@@ -1,0 +1,40 @@
+1.DESeq2（样本去掉D3\D6\C3\C6）
+library(readxl)
+lncRNA_exp <- read_excel("/mnt/raid5/User/bailin/project/241209Constipation_lncRNA/data/lncRNA/summary/7.lncRNA/2.lncExpression/1_lncRNA_fpkm_expression.xlsx")
+lncRNA_count <- as.data.frame(lncRNA_exp[,c(7,42,43,44,46,47,49:54,56,57,59:61)])
+row.names(lncRNA_count) <- lncRNA_count$t_name
+lncRNA_count <- lncRNA_count[,-1]
+
+library(DESeq2)
+counts <- as.matrix(lncRNA_count)
+group <- c(rep("C", 8), rep("D", 8)) # 修改为实际组数
+colData <- data.frame(
+  row.names = colnames(lncRNA_count),
+  condition = factor(group)
+)
+dds <- DESeqDataSetFromMatrix(
+  countData = lncRNA_count,
+  colData = colData,
+  design = ~ condition
+)
+# 筛除低表达基因（选择总和大于一定阈值的基因）
+dds <- dds[rowSums(counts(dds)) > 10, ]
+# 运行 DESeq2 分析
+dds <- DESeq(dds)
+res <- results(dds, contrast = c("condition", "D", "C")) # 比较 D vs C，C是参考组
+diff_lncRNA <- subset(res, abs(log2FoldChange) >= 1 & pvalue < 0.05)
+diff_lncRNA_filtered <- diff_lncRNA[!grepl("^MSTRG", rownames(diff_lncRNA)), ]
+write.csv(res,"/mnt/raid5/User/bailin/project/241209Constipation_lncRNA/result/lncRNA/DESeq2_lncRNA/diff_lncRNA.csv")
+write.csv(diff_lncRNA_filtered,"/mnt/raid5/User/bailin/project/241209Constipation_lncRNA/result/lncRNA/DESeq2_lncRNA/diff_lncRNA_p_0.05.csv")
+
+2.筛选关联分析结果
+library(readxl)
+lncRNA_targetPrediction <- read_excel("/mnt/raid5/User/bailin/project/241209Constipation_lncRNA/data/lncRNA/summary/9.AssociationAnalysis/2.cis/DVSC/1_lncRNA_targetPrediction_all.xlsx")
+colnames(lncRNA_targetPrediction) <- lncRNA_targetPrediction[1,]
+colnames(lncRNA_targetPrediction)[1] <- "transcript_name_mRNA"
+lncRNA_targetPrediction <- as.data.frame(lncRNA_targetPrediction)
+
+diff_lncRNA <- read.csv("/mnt/raid5/User/bailin/project/241209Constipation_lncRNA/result/lncRNA/DESeq2_lncRNA/diff_lncRNA_p_0.05.csv",row.names =1)
+diff_mRNA <- read.csv("/mnt/raid5/User/bailin/project/241209Constipation_lncRNA/result/mRNA/DESeq2_mRNA/diff_mRNA_p_0.05.csv",row.names =1)
+lnc_data <- lncRNA_targetPrediction[lncRNA_targetPrediction$transcript_name == rownames(diff_lncRNA),]
+cis_data <- lnc_data[lnc_data$transcript_name == rownames(diff_mRNA),]
